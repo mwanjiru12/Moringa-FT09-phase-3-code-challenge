@@ -45,3 +45,5 @@ class Article:
         magazine = cursor.fetchone()
         conn.close()
         return Magazine(magazine['id'], magazine['name'], magazine['category'])
+    
+    #pelepele
