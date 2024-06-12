@@ -1,91 +1,90 @@
 from database.connection import get_db_connection
-from models.article import Article
-from models.author import Author
+CONN = get_db_connection()
+CURSOR = CONN.cursor()
 
 class Magazine:
-    def __init__(self, id=None, name=None, category=None):
-        self._id = id
-        self._name = name
-        self._category = category
-        if name is not None and category is not None:
-            self.save()
+    def __init__(self, id, name, category):
+        self.id = id
+        self.name = name
+        self.category = category
 
     def save(self):
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('INSERT INTO magazines (name, category) VALUES (?, ?)', (self._name, self._category))
-        self._id = cursor.lastrowid
-        conn.commit()
-        conn.close()
+        CURSOR.execute("SELECT id FROM magazines WHERE id = ?", (self._id,))
+        if CURSOR.fetchone():
+                raise ValueError(f"Article with id {self._id} already exists")
+        sql = """
+         INSERT INTO magazines (
+         id, name, category)  
+         VALUES (?, ?, ?)  
+        """
+        CURSOR.execute(sql,(self._id, self._name ,self._category))
+        CONN.commit()
 
-    @property
-    def id(self):
-        return self._id
+    def find_cat_from_db(self, id):
+        sql = """SELECT category FROM magazines WHERE id = ?"""
+        CURSOR.execute(sql, (id,))
+        row = CURSOR.fetchone()
+        if row:
+            self._category = row[0]
+            return self._category
+        else:
+            raise ValueError("The Category is not available in the database")
 
-    @property
-    def name(self):
-        return self._name
+ 
 
-    @name.setter
-    def name(self, new_name):
-        self._name = new_name
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE magazines SET name = ? WHERE id = ?', (new_name, self._id))
-        conn.commit()
-        conn.close()
+    def magazine_articles(self):
+        sql = """SELECT magazines.name, articles.id, articles.title FROM magazines
+                INNER JOIN articles ON magazines.id = articles.magazine_id
+                WHERE magazines.id = ?"""
+        CURSOR.execute(sql, (self._id,))
+        article_details = CURSOR.fetchall()
+        return [row[2] for row in article_details]
 
-    @property
-    def category(self):
-        return self._category
-
-    @category.setter
-    def category(self, new_category):
-        self._category = new_category
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE magazines SET category = ? WHERE id = ?', (new_category, self._id))
-        conn.commit()
-        conn.close()
-
-    def articles(self):
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM articles WHERE magazine_id = ?', (self._id,))
-        articles = cursor.fetchall()
-        conn.close()
-        return [Article(article['id'], article['title'], article['author_id'], article['magazine_id']) for article in articles]
-
-    def contributors(self):
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-        SELECT DISTINCT authors.* FROM authors
-        JOIN articles ON articles.author_id = authors.id
-        WHERE articles.magazine_id = ?
-        ''', (self._id,))
-        authors = cursor.fetchall()
-        conn.close()
-        return [Author(author['id'], author['name']) for author in authors]
+    def magazine_contributors(self):
+        sql = """SELECT authors.id, authors.name, magazines.name FROM authors
+               INNER JOIN articles ON authors.id = articles.author_id
+               INNER JOIN magazines ON articles.magazine_id = magazines.id
+               WHERE magazines.id = ?"""
+        CURSOR.execute(sql, (self._id,))
+        contributors = CURSOR.fetchall()
+        return [row[1] for row in contributors]
 
     def article_titles(self):
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT title FROM articles WHERE magazine_id = ?', (self._id,))
-        titles = cursor.fetchall()
-        conn.close()
-        return [title['title'] for title in titles]
+        sql = """SELECT magazines.name, articles.title FROM articles 
+                INNER JOIN magazines ON articles.magazine_id = magazines.id
+                WHERE magazines.id = ? """
+        CURSOR.execute(sql, (self._id,))
+        titles = CURSOR.fetchall()
+        if not titles:
+            return None
+        else:
+            return [row[1] for row in titles]
 
     def contributing_authors(self):
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-        SELECT authors.*, COUNT(articles.id) as article_count FROM authors
-        JOIN articles ON articles.author_id = authors.id
-        WHERE articles.magazine_id = ?
-        GROUP BY authors.id
-        HAVING article_count > 2
-        ''', (self._id,))
-        authors = cursor.fetchall()
-        conn.close()
-        return [Author(author['id'], author['name']) for author in authors]
+        sql = """
+            SELECT authors.id, authors.name, COUNT(*) AS article_count
+            FROM authors
+            INNER JOIN articles ON authors.id = articles.author_id
+            INNER JOIN magazines ON articles.magazine_id = magazines.id
+            WHERE magazines.id = ?
+            GROUP BY authors.id, authors.name
+            HAVING COUNT(*) > 2
+        """
+        CURSOR.execute(sql, (self._id,))
+        authors_data = CURSOR.fetchall()
+
+        if not authors_data:
+            return None
+        else:
+            return [row[1] for row in authors_data]
+    def __repr__(self):
+        return f'<Magazine {self._name}>'
+
+
+# magazine1.add_mag_to_db()
+
+
+# print(magazine1.magazine_articles())
+# print(magazine1.magazine_contributors())
+# print(magazine1.article_titles())
+# print(magazine1.contributing_authors())
